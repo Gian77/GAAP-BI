@@ -9,7 +9,7 @@ GAAP-BI v.1, October 2022<br>
 
 ## *This pipeline is based upon work supported by the Great Lakes Bioenergy Research Center, U.S. Department of Energy, Office of Science, Office of Biological and Environmental Research under award DE-SC0018409*
 
-> **_IMPORTANT NOTE_**<br>
+> **_WARNING_**<br>
 > ### **This pipeline was built for running on a cluster computer that runs SLURM (Slurm Workload Manager) job scheduler. Any other use will require substantial modification of the code.**
 
 ### **Installation**
@@ -32,8 +32,15 @@ Then you should be good to go and run GAAP-BP by just
 #### **Directories**
 The main project's directory is: `project_dir="/mnt/home/benucci/GAAP-BP/`. Of course, you will need to adjust the path to your HPCC user name. 
 
-> **_IMPORTANT NOTE_**<br> 
-> * This pipeline run using SLURM (please see bove). **Resourches of each individual scripts present in the `/mnt/home/benucci/GAAP-BP/code/` direcotry must be adjusted to the amount of data you want to run for each pipelien round.**
+> **_NOTE_**<br> 
+> * This pipeline run using SLURM (please see bove). **Resourches of each individual scripts present in the `/mnt/home/benucci/GAAP-BP/code/` directory must be adjusted to the amount of data you want to run for each pipeline run.** In particular the parameters below.
+```
+#SBATCH --time=00:30:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=48
+#SBATCH --mem=256G
+```
 > * The individual scripts in the `code` direcotry include the buy-in node priority `#SBATCH -A shade-cole-bonito`. If you do not have access to those priority nodes please remove that line in the individual scripts.
 > * You can change the name of the `project_dir`, but by default is going to be `GAAP-BP`. Subdirectories such as `outputs` and `slurms` are part of the workflow, and should be left as they are.
 > * Please check the config file for options. A few script are additional and are can be avoided to save time.
@@ -46,14 +53,15 @@ cd $project_dir/rawdata/
 
 # **Running options** 
 If not numeric (i.e. float) then `yes` or `no`.
-
-INTERLACED=yes 
+```
+INTERLACED=yes
 COVERAGE=2.0
 LENGTH=500
 MASH=yes
 CHROMOSOMES=3
 EGGNOG=yes
 BAKTA=no
+```
 
 The `INTERLACED` variable is for when read are interlaced  (i.e. `R1` and `R2` are in the same file), if interlaced then specify `yes`.
 The `COVERAGE` and `LENGTH` are selexplanaroty and refer to the assembled contigs.
@@ -81,7 +89,6 @@ busco_db="/mnt/research/ShadeLab/Benucci/databases/busco_db1121/bacteria_odb10"
 phix_db="/mnt/research/ShadeLab/Benucci/databases/phix_index/my_phix"
 gunc_db="/mnt/research/ShadeLab/Benucci/databases/gunc_db"
 bakta_db="/mnt/research/ShadeLab/Benucci/databases/bakta_db/db"
-#dmnd_bac="/mnt/research/ShadeLab/Benucci/databases/emapperdb/eggdb_bacteria.dmnd"
 
 ```
 #### **PATHs**
