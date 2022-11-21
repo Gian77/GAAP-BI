@@ -34,13 +34,13 @@ The main project's directory is: `project_dir="/mnt/home/benucci/GAAP-BP/`. Of c
 
 > **_NOTE_**<br> 
 > * This pipeline run using SLURM (please see bove). **Resourches of each individual scripts present in the `/mnt/home/benucci/GAAP-BP/code/` directory must be adjusted to the amount of data you want to run for each pipeline run.** In particular the parameters below.
-```
-#SBATCH --time=00:30:00
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=48
-#SBATCH --mem=256G
-```
+> ```
+> #SBATCH --time=00:30:00
+> #SBATCH --nodes=1
+> #SBATCH --ntasks=1
+> #SBATCH --cpus-per-task=48
+> #SBATCH --mem=256G
+> ```
 > * The individual scripts in the `code` direcotry include the buy-in node priority `#SBATCH -A shade-cole-bonito`. If you do not have access to those priority nodes please remove that line in the individual scripts.
 > * You can change the name of the `project_dir`, but by default is going to be `GAAP-BP`. Subdirectories such as `outputs` and `slurms` are part of the workflow, and should be left as they are.
 > * Please check the config file for options. A few script are additional and are can be avoided to save time.
