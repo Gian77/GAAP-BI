@@ -1,0 +1,71 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:59:00 
+#SBATCH --nodes=1-2
+#SBATCH --ntasks=2
+#SBATCH --cpus-per-task=64
+#SBATCH --mem=512G
+#SBATCH --job-name 17circlator
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 17_fixstart-circlator.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/17_fixstart_circlator/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/17_fixstart_circlator/"; mkdir $project_dir/outputs/17_fixstart_circlator/
+	echo "cd $project_dir/outputs/16_cleanGenome_bash/"; cd $project_dir/outputs/16_cleanGenome_bash/
+
+	echo -e "\n==========  Circularize genome assemblies with Circlator ==========\n"
+	for file in $(find . -type f -name 'contigs_hq.fasta' | sed 's/\.\///');
+	do 
+		output_dir=$(ls $file | awk -F "/" '{print $1}')
+		contigs_n=$(grep -c "^>NODE" $project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_hq.fasta)
+		
+		if [[ "$CHROMOSOMES" -ge "$contigs_n" ]]; then
+
+			echo "The genone has less than $CHROMOSOMES contigs. Circularizing!"
+			
+			mkdir $project_dir/outputs/17_fixstart_circlator/${output_dir}/
+		
+			echo -e "\n========== Only fixstart on filtered contigs for file: $output_dir ==========\n" 
+			conda activate circlator
+			echo "Circlator version: `circlator version`" 		
+	
+			circlator \
+				fixstart \
+				--verbose \
+				$project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_hq.fasta \
+				$project_dir/outputs/17_fixstart_circlator/${output_dir}/contigs_hq_fixstart
+	
+			conda deactivate
+		else
+			echo "The genone has more than $CHROMOSOMES contigs. Skipping!"
+		fi;
+	done;
+fi
+
+#cd $project_dir/outputs/16_cleanGenome_bash/
+#echo -e "\n========== Full circlator pipe on filtered contigs for file: $output_dir ==========\n" 	
+#circlator all \
+#--threads $cores \
+#--verbose \
+#$project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_hq.fasta ${output_dir}.fastq \
+#$project_dir/outputs/17_fixstart_circlator/${output_dir}/
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/17_fixstart-circlator.slurm

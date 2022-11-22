@@ -1,0 +1,74 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:15:00
+#SBATCH --nodes=1-2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=48
+#SBATCH --mem=384G
+#SBATCH --job-name 19busco
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 19_genePrediction-busco.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/19_geneprediction_busco/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/19_geneprediction_busco"; mkdir $project_dir/outputs/19_geneprediction_busco/
+	echo "cd $project_dir/outputs/16_cleanGenome_bash/"; cd $project_dir/outputs/16_cleanGenome_bash/
+
+	echo -e "\n========== Testing completeness through gene prediction ==========\n"
+	for file in $(find . -type f -name 'contigs_hq.fasta' | sed 's/\.\///');
+	do 
+		output_dir=$(ls $file | awk -F "/" '{print $1}')	
+
+		if [ -d $project_dir/outputs/17_fixstart_circlator/${output_dir}/ ]; then
+
+			source_file=$project_dir/outputs/17_fixstart_circlator/${output_dir}/contigs_hq_fixstart.fasta
+			echo -e "\n Directory exist! I am going to use the circularized assembly. \n"
+		else 
+			source_file=$project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_hq.fasta
+			echo -e "\n No curcular chromosome. I am going to use the high quality contigs. \n"
+		fi;
+
+			echo -e "\n========== Gene prediction for file: $file ==========\n" 
+			#mkdir $project_dir/outputs/19_geneprediction_busco/${file%.*}/
+				
+			conda activate busco
+			echo "version of Busco: `busco --version`" 
+				
+			busco \
+				--cpu $cores \
+				-l $busco_db \
+				-m genome \
+				-i $source_file \
+				-o ${output_dir}_busco
+			
+			mv ${output_dir}_busco/ $project_dir/outputs/19_geneprediction_busco/		
+			conda deactivate
+	done;
+ 
+	if [ -d $project_dir/outputs/17_fixstart_circlator/${output_dir}/ ]; then
+
+		mv $project_dir/outputs/17_fixstart_circlator/busco_downloads/ $project_dir/outputs/19_geneprediction_busco/
+	else 
+		mv $project_dir/outputs/16_cleanGenome_bash/busco_downloads/ $project_dir/outputs/19_geneprediction_busco/
+	fi	
+fi
+
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/19_geneprediction-busco.slurm

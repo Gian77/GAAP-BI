@@ -1,0 +1,98 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:59:00 
+#SBATCH --nodes=1-2     
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=96
+#SBATCH --mem=256G  
+#SBATCH --job-name 9qualimap
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 09_assemblyeval-bowtie2-qualimap.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/09_assemblyeval_bowtie2-qualimap"; mkdir $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/
+	echo "cd $project_dir/outputs/06_assembly_spades/"; cd $project_dir/outputs/06_assembly_spades/
+
+	echo -e "\n========== Generating aligments and running Qualimap ==========\n"
+	for file in $(find . -type f -name 'contigs_hq.fasta' | sed 's/\.\///');
+	do 
+		output_dir=$(ls $file | awk -F "/" '{print $1}')
+		echo -e "\n========== Plasmid check for file: $output_dir ==========\n"
+		conda activate bowtie2
+		echo -e "bowtie2 version: `bowtie2 --version`"
+		# bowtie2 wants the directory
+		mkdir $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}
+		bowtie2-build \
+			-f $file \
+			$project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/index
+    
+		bowtie2 \
+			-p $cores \
+			-t \
+			-x $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/index \
+			-1 $project_dir/outputs/05_trimmingadapters_fastp/${output_dir}_trimmed_R1.fastq \
+			-2 $project_dir/outputs/05_trimmingadapters_fastp/${output_dir}_trimmed_R2.fastq \
+			-S $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/qualimap_alignment.sam
+		conda deactivate
+
+	    	echo -e "\n========== samtools view for file: $output_dir  ==========\n" 
+		conda activate samtools
+		echo -e "samtools version: `samtools --version`"
+			
+		samtools view \
+			-@ $cores \
+			-h -b \
+			-o $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/qualimap_alignment.bam \
+			-S $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/qualimap_alignment.sam 
+	    
+		echo -e "\n========== samtools sort for file: $file ==========\n" 
+		samtools sort \
+			-@ $cores \
+			$project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/qualimap_alignment.bam \
+			-o $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/qualimap_alignment.sorted.bam 
+    
+		echo -e "\n========== samtools index for file: $file ==========\n" 
+			samtools index \
+			-@ $cores \
+			$project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/qualimap_alignment.sorted.bam 
+		conda deactivate	
+    
+		echo -e "\n========== qualimap mabqc for file: $file ==========\n" 
+		conda activate qualimap
+		echo -e "qualimap version: `qualimap --version`"
+		qualimap bamqc \
+			-bam $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/qualimap_alignment.sorted.bam \
+			-outdir $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/qualimap_evaluation \
+			-outfile $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/qualimap_evaluation/qualimap.html \
+			-outformat html
+		conda deactivate
+
+		echo -e "\n========== remove files ==========\n"
+		find $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/ -type d -name "*_index" -print0 | xargs -0 rm -rf
+		find $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/ -type f -name "*_alignment.sam" -print0 | xargs -0 rm -rf
+		find $project_dir/outputs/09_assemblyeval_bowtie2-qualimap/${output_dir}/ -type f -name "*_alignment.bam" -print0 | xargs -0 rm -rf
+	done;
+fi
+# samtools -h, --with-header Include header in SAM output
+# samtools -b, --bam Output BAM
+# samtools -@, --threads Number of additional threads to use [0]
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/09_assemblyeval_bowtie2-qualimap.slurm

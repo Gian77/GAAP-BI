@@ -1,0 +1,69 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:29:00 
+#SBATCH --nodes=1-2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=64
+#SBATCH --mem=128G
+#SBATCH --job-name 13gunc
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 13_chimeraDetect-gunc-checkm.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/13_chimeraDetect_gunc-checkm/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/13_chimeraDetect_gunc-checkm"; mkdir $project_dir/outputs/13_chimeraDetect_gunc-checkm/
+	echo "cd $project_dir/outputs/06_assembly_spades/"; cd $project_dir/outputs/06_assembly_spades/
+
+	echo -e "\n========== Detecting contamination and chimerism with GUNC ==========\n"
+	echo -e "cd $project_dir/outputs/06_assembly_spades/"; cd $project_dir/outputs/06_assembly_spades/
+
+	for file in $(find . -type f -name 'contigs_hq.fasta' | sed 's/\.\///');
+	do 
+		output_dir=$(ls $file | awk -F "/" '{print $1}')
+		echo -e "\n========== GUNC analysis for file: $output_dir ==========\n" 
+		mkdir $project_dir/outputs/13_chimeraDetect_gunc-checkm/${output_dir}
+		conda activate gunc
+		echo -e "version of GUNC: `gunc --version`" 
+	
+		gunc run \
+			--threads $cores \
+			--use_species_level \
+			--detailed_output \
+			--contig_taxonomy_output \
+			--sensitive \
+			--input_fasta $project_dir/outputs/06_assembly_spades/${output_dir}/contigs_hq/contigs_hq.fasta \
+			--out_dir $project_dir/outputs/13_chimeraDetect_gunc-checkm/${output_dir}/
+	
+		gunc plot \
+			--diamond_file $project_dir/outputs/13_chimeraDetect_gunc-checkm/${output_dir}/diamond_output/contigs.diamond.progenomes_2.1.out \
+			--gunc_gene_count_file $project_dir/outputs/13_chimeraDetect_gunc-checkm/${output_dir}/gene_calls/gene_counts.json \
+			--out_dir $project_dir/outputs/13_chimeraDetect_gunc-checkm/${output_dir}/
+	
+		gunc merge_checkm \
+			--gunc_file $project_dir/outputs/13_chimeraDetect_gunc-checkm/${output_dir}/GUNC.progenomes_2.1.maxCSS_level.tsv \
+			--checkm_file $project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/storage/marker_gene_stats.tsv
+			--out_dir $project_dir/outputs/13_chimeraDetect_gunc-checkm/${output_dir}/
+	
+		conda deactivate
+	done;
+fi
+
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/13_chimeraDetect-gunc-checkm.slurm

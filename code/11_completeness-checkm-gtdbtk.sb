@@ -1,0 +1,88 @@
+#!/bin/bash -login
+
+#SBATCH --time=01:59:00 
+#SBATCH --nodes=1-2    
+#SBATCH --ntasks=1 
+#SBATCH --cpus-per-task=128
+#SBATCH --mem=512G  
+#SBATCH --job-name 11gtdbtk
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 11_completeness-checkm-gtdbtk.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/11_completeness_checkm-gtdbtk/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/11_completeness_checkm-gtdbtk"; mkdir $project_dir/outputs/11_completeness_checkm-gtdbtk/
+	echo "cd $project_dir/outputs/06_assembly_spades/"; cd $project_dir/outputs/06_assembly_spades/
+
+	echo -e "\n========== Genome copleteness with checkm and gtdbtk ==========\n"
+	for file in $(find . -type f -name 'contigs_hq.fasta' | sed 's/\.\///');
+	do 
+		output_dir=$(ls $file | awk -F "/" '{print $1}')
+		echo -e "\n========== CheckM for file: $output_dir ==========\n" 
+		mkdir $project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}
+
+		conda activate checkm-genome
+		echo -e "version of CheckM: `checkm-genome --version`" 
+
+		cp $project_dir/outputs/06_assembly_spades/${output_dir}/contigs_hq/contigs_hq.fasta \
+				$project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/
+		mkdir $project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/checkm_completeness
+	
+		checkm lineage_wf \
+			-t $cores \
+			-x fasta $project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/ \
+				$project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/checkm_completeness/
+
+		checkm qa \
+			-o 2 \
+			-t $cores \
+			--tab_table \
+			-f $project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/checkm_completeness/checkm_report.tsv \
+			$project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/checkm_completeness/lineage.ms \
+				$project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/checkm_completeness/
+		conda deactivate
+
+		echo -e "\n========== Classify with GTDB-Tk file: $file ==========\n" 
+		conda activate gtdb-tk
+	
+		gtdbtk classify_wf \
+			--cpus $cores \
+			--pplacer_cpus 64 \
+			--write_single_copy_genes \
+			--keep_intermediates \
+			-x fasta \
+			--genome_dir $project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/ \
+			--out_dir $project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/gtdbtk_classification
+		
+		conda deactivate
+		
+		rm $project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/contigs_hq.fasta
+	done;
+fi
+
+# https://itecnote.com/tecnote/r-an-efficient-way-to-transpose-a-file-in-bash/
+cols=`head -n 1 $project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/checkm_completeness/checkm_report.tsv | wc -w`
+ 	for (( i=1; i <= $cols; i++)); do cut -f $i $project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/checkm_completeness/checkm_report.tsv | tr $'\n' $'\t' | sed -e "s/\t$/\n/g" > $project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/checkm_completeness/checkm_transposed_report.tsv
+done
+
+#NOTE --pplacer_cpus must be 64 or less, otherwise it wil hang no matter what!
+#NOTE checkm lineage_wf <bin folder> <output folder>
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/11_completeness-checkm-gtdbtk.slurm

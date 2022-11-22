@@ -1,0 +1,109 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:59:00 
+#SBATCH --nodes=1-2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=128
+#SBATCH --mem=256G
+#SBATCH --job-name 14rRNAs
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 14_extractRNAgenes-barrnap-metaxa.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/14_rrnagenes_barrnap-metaxa/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo -e "mkdir $project_dir/outputs/14_rrnagenes_barrnap-metaxa"; mkdir $project_dir/outputs/14_rrnagenes_barrnap-metaxa/
+	echo "cd $project_dir/outputs/06_assembly_spades/"; cd $project_dir/outputs/06_assembly_spades/
+
+	echo -e "\n========== Extracting rRNA genes using barrnap==========\n"
+	for file in $(find . -type f -name 'contigs_hq.fasta' | sed 's/\.\///');
+	do 
+		output_dir=$(ls $file | awk -F "/" '{print $1}')
+		mkdir $project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}
+	
+		echo -e "\n========== Extracting rRNA genes from genome with barrnap: $output_dir ==========\n" 
+		conda activate barrnap
+		echo -e "version of barrnap: `barrnap --version`" 
+	
+		barrnap \
+			--threads $cores \
+			--kingdom bac \
+			--outseq $project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/rRNAs_barrnap.fasta \
+			< $project_dir/outputs/06_assembly_spades/${output_dir}/contigs_hq/contigs_hq.fasta > \
+			$project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/rRNAs_barrnap.gff
+		conda deactivate
+
+		echo -e "\n========== Extracting rRNA genes from genome with metaxa: $output_dir ==========\n"
+		conda activate metaxa
+		metaxa2 \
+			--cpu $cores \
+			--complement F \
+			-t a,b \
+			-i $project_dir/outputs/06_assembly_spades/${output_dir}/contigs_hq/contigs_hq.fasta \
+			-o $project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/rRNAs_metaxa
+			#awk -F "|" '{print $1}' rRNAs_metaxa.fasta > rRNAs_clean_metaxa.fasta
+			conda deactivate
+	done;
+
+	cd $project_dir/outputs/14_rrnagenes_barrnap-metaxa/
+	for file in $(find . -type f -name 'rRNAs_barrnap.fasta' | sed 's/\.\///'); 
+	do 
+		cd $project_dir/outputs/14_rrnagenes_barrnap-metaxa/
+		output_dir=$(ls $file | awk -F "/" '{print $1}')
+		#mkdir $project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}
+	
+		echo -e "\n========== BLAST 16S, 23S, 5S genes for file: $output_dir ==========\n" 
+	
+		conda activate BLASTblobtool
+		echo -e "Version of BLAST: `blastn -version`" 
+		blastn \
+			-num_threads $cores \
+			-task megablast \
+			-query $project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/rRNAs_barrnap.fasta \
+			-db $NCBI_nt/nt \
+			-evalue 1e-5 \
+			-max_target_seqs 25 \
+			-max_hsps 10 \
+			-outfmt '6 qseqid staxids bitscore pident evalue length qlen slen qcovs qcovhsp sskingdoms scomnames sscinames sblastnames stitle' \
+			-out $project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/rRNAs_barrnap_blast.out \
+
+		sed '1i #seq-id_query\ttax-id_subject\tbitscore\tidentity_percent\te-value\talignment_length\tquery_length\tsubject_length\tquery_coverage/subject\tquery_coverage/HSP\tkingdom\tcommon_name\tscientific_name\tblast_name\ttitle' \
+		$project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/rRNAs_barrnap_blast.out > \
+		$project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/rRNAs_barrnap_blast.table
+
+		# Exctracting info from blast table
+		paste <(cut -f 1,3,4,5 $project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/rRNAs_barrnap_blast.table) \
+		<(cut -f 15 $project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/rRNAs_barrnap_blast.table \
+			| cut -f15 | sed 's/\ /_/' | cut -f 1 -d" ") \
+			| sed 's/::/ /' | sed '1d' | sed '1i seqID\tbitscore\tidentity\tevalue\ttaxon' > \
+				$project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/rRNAs_barrnap_blast.results
+
+		echo -e "\n========= Extracting top frequent hits in R =========\n"
+		# Summary tables of mean BLAST results across hits
+		conda activate R
+			cd $project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/
+			Rscript $project_dir/code/getBLASTresults.R
+			mv $project_dir/code/rRNA_barrnap_blast.mean $project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/
+		conda deactivate
+	done;
+fi
+
+
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/14_rrnagenes-barrnap-metaxa.slurm

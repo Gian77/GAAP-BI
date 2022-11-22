@@ -1,0 +1,36 @@
+#************************ GAAP-BI v. 1.0 config file *************************#
+
+#********** MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D. **********#
+#********************* email: benucci[at]msu[dot]edu *************************#
+
+# Config file for genome-pipe-bac-illum
+echo -e "Reading GAAP-BI v. 1.0 config.yaml"
+project_dir="/mnt/home/benucci/GAAP-BI"
+cd $project_dir/rawdata/
+
+# Databases
+NCBI_nt="/mnt/research/ShadeLab/Benucci/databases/ncbi_nt1121"
+kraken2_db="/mnt/research/ShadeLab/Benucci/databases/kraken2_db/"
+minikraken2_db="/mnt/research/ShadeLab/Benucci/databases/minikraken2_db/"
+platon_db="/mnt/research/ShadeLab/Benucci/databases/platon_db/db/"
+mash_plsdb="/mnt/research/ShadeLab/Benucci/databases/plasmid_db/plsdb.msh"
+mash_plsdb_meta="/mnt/research/ShadeLab/Benucci/databases/plasmid_db/plsdb.tsv"
+busco_db="/mnt/research/ShadeLab/Benucci/databases/busco_db1121/bacteria_odb10"
+phix_db="/mnt/research/ShadeLab/Benucci/databases/phix_index/my_phix"
+gunc_db="/mnt/research/ShadeLab/Benucci/databases/gunc_db"
+bakta_db="/mnt/research/ShadeLab/Benucci/databases/bakta_db/db"
+
+# Running options. If not numeric (i.e. float) then 'yes' or 'no'.
+INTERLACED=yes 
+COVERAGE=2.0
+LENGTH=500
+MASH=yes
+CHROMOSOMES=3
+EGGNOG=yes
+BAKTA=no
+
+# PATHs
+export GTDBTK_DATA_PATH=/mnt/research/ShadeLab/Benucci/databases/gtdb_tk/release207_v2
+export EGGNOG_DATA_DIR=/mnt/research/ShadeLab/Benucci/databases/emapperdb/
+export GUNC_DB=/mnt/research/ShadeLab/Benucci/databases/gunc_db/gunc_db_progenomes2.1.dmnd
+#****************************************************************************#

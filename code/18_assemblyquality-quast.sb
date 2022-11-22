@@ -1,0 +1,86 @@
+#!/bin/bash -login
+
+#SBATCH --time=01:59:00 
+#SBATCH --nodes=1-2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=128
+#SBATCH --mem=512G
+#SBATCH --job-name 18quast
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 18_assemblyquality-quast.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/18_assemblyquality_checkm-quast/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/18_assemblyquality_checkm-quast"; mkdir $project_dir/outputs/18_assemblyquality_checkm-quast/
+	echo "cd $project_dir/outputs/16_cleanGenome_bash/"; cd $project_dir/outputs/16_cleanGenome_bash/
+
+	echo -e "\n========== Evaluating genome assembly with Quast ==========\n"
+	for file in $(find . -type f -name 'contigs_hq.fasta' | sed 's/\.\///');
+	do 
+		output_dir=$(ls $file | awk -F "/" '{print $1}')
+	
+		echo -e "\n========== CheckM analysis for file: $output_dir ==========\n"
+		conda activate checkm-genome
+		echo "version of CheckM: `checkm-genome --version`" 
+		
+		mkdir $project_dir/outputs/18_assemblyquality_checkm-quast/${output_dir}/
+	
+		cp $project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_hq.fasta  \
+			$project_dir/outputs/18_assemblyquality_checkm-quast/${output_dir}/
+	
+		mkdir $project_dir/outputs/18_assemblyquality_checkm-quast/${output_dir}/checkm_completeness
+		mkdir $project_dir/outputs/18_assemblyquality_checkm-quast/${output_dir}/quast_qualityeval
+	
+		checkm lineage_wf \
+			-t $cores \
+			-x fasta $project_dir/outputs/18_assemblyquality_checkm-quast/${output_dir}/ \
+			$project_dir/outputs/18_assemblyquality_checkm-quast/${output_dir}/checkm_completeness/
+	
+		checkm qa \
+			-o 2 \
+			-t $cores \
+			--tab_table \
+			-f $project_dir/outputs/18_assemblyquality_checkm-quast/${output_dir}/checkm_completeness/checkm_report.tsv \
+			$project_dir/outputs/18_assemblyquality_checkm-quast/${output_dir}/checkm_completeness/lineage.ms \
+			$project_dir/outputs/18_assemblyquality_checkm-quast/${output_dir}/checkm_completeness/
+		conda deactivate
+
+		echo -e "\n========== QUAST evaluation for file: $output_dir ==========\n" 
+		conda activate quast
+		echo "version of `quast --version`" 
+		quast.py \
+			--threads $cores \
+			--glimmer \
+			--no-icarus \
+			--report-all-metrics \
+			-l assembly \
+			$project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_hq.fasta \
+			-o $project_dir/outputs/18_assemblyquality_checkm-quast/${output_dir}/quast_qualityeval/
+		conda deactivate
+
+		rm $project_dir/outputs/18_assemblyquality_checkm-quast/${output_dir}/contigs_hq.fasta 
+	done;
+fi
+
+#$project_dir/outputs/17_fixstart_circlator/${output_dir}/06.fixstart.fasta \
+# WARNING: GeneMark tool (--gene-finding option) can't be started because of license limitations! 
+# I use --glimmer option to enable gene finding.
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/18_assemblyquality-quast.slurm

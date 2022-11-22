@@ -1,0 +1,95 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:10:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64G
+#SBATCH --job-name 16cleanGenome
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 16_cleanGenome-bash.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/16_cleanGenome_bash/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/16_cleanGenome_bash"; mkdir $project_dir/outputs/16_cleanGenome_bash/
+	echo "cd $project_dir/outputs/06_assembly_spades/"; cd $project_dir/outputs/06_assembly_spades/
+
+	echo -e "\n========== Filtering contigs byt length, coverage, and taxonomic ID ==========\n"
+	for file in $(find . -type f -name 'contigs_hq.fasta*' | sed 's/\.\///');
+	do
+		output_dir=$(ls $file | awk -F "/" '{print $1}')
+		echo -e "\n========== extracting BLAST output for file: $output_dir ==========\n"
+		mkdir $project_dir/outputs/16_cleanGenome_bash/${output_dir}/
+	
+		genus_gtdb=$(awk 'FNR == 2 {print}' $project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/gtdbtk_classification/gtdbtk.bac120.summary.tsv \
+		| cut -f 2 | cut -f 6 -d ";" | cut -f 3 -d "_")
+		genus_blob=$(sed '1,11d' $project_dir/outputs/10_assemblyvisual_blast_blobt/${output_dir}/BLASTblobtool_bestscore.txt.blobDB.table.txt \
+		| cut -f 6 | head -1)
+		genus_krak=$(cut -f4,5,6 $project_dir/outputs/12_taxcalssabund_kraken2-bracken/${output_dir}/kraken2_report.txt \
+		| grep "^G" | cut -f 3 | sed 's/ //g' | head -1)
+	
+		if [[ "$genus_gtdb" == "$genus_blob" ]] | [[ "$genus_gtdb" == "$genus_krak" ]] | [[ "$genus_blob" == "$genus_krak" ]]; then
+			echo -e "Let's go! The genus of this genome is $genus_gtdb "
+			grep "$genus_gtdb" $project_dir/outputs/15_filterContaminants_bash/${output_dir}/contaminants_table.results \
+			| sed '1i #contigs\tnode_blast_blobtools\tblast_blobtools\tnode_kraken2\tkraken2\tnode_gunc\tgunc\tgunc_assigned_genes\tlength\tcoverage' > \
+				$project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_consensus.results
+
+			# Use -v to pass variables inside awk command
+			cat $project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_consensus.results \
+			| sed '1d' | awk -v len="$LENGTH" -v cov="$COVERAGE" '$9>=len && $10>=cov' > \
+				$project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_filtered.results
+
+			cat $project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_filtered.results \
+			| cut -f 1,9,10 \
+			| sed 's/\t/_length_/;s/\t/_cov_/' > $project_dir/outputs/16_cleanGenome_bash/${output_dir}/ids.txt	
+
+			awk 'NR==FNR{a[">"$0];next}/^>/{f=0;}($0 in a)||f{print;f=1}' \
+				$project_dir/outputs/16_cleanGenome_bash/${output_dir}/ids.txt \
+				$project_dir/outputs/06_assembly_spades/${output_dir}/contigs_hq/contigs_hq.fasta > \
+				$project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_hq.fasta
+		else 
+			echo "The consensus approach did not work. Let's use the 16S gene!";
+									
+			RNAgene=$(cat $project_dir/outputs/14_rrnagenes_barrnap-metaxa/${output_dir}/rRNAs_barrnap_blast.results \
+			| grep "^16S" | cut -f5 | sed 's/_/\t/' | cut -f1 | head -1)
+			
+			grep "$genus_gtdb" $project_dir/outputs/15_filterContaminants_bash/${output_dir}/contaminants_table.results \
+			| sed '1i #contigs\tnode_blast_blobtools\tblast_blobtools\tnode_kraken2\tkraken2\tnode_gunc\tgunc\tgunc_assigned_genes\tlength\tcoverage' > \
+				$project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_consensus.results
+
+			cat $project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_consensus.results \
+			| sed '1d' | awk -v len="$LENGTH" -v cov="$COVERAGE" '$9>=len && $10>=cov' > \
+				$project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_filtered.results
+
+			cat $project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_filtered.results \
+			| cut -f 1,9,10 \
+			| sed 's/\t/_length_/;s/\t/_cov_/' > $project_dir/outputs/16_cleanGenome_bash/${output_dir}/ids.txt	
+
+			awk 'NR==FNR{a[">"$0];next}/^>/{f=0;}($0 in a)||f{print;f=1}' \
+				$project_dir/outputs/16_cleanGenome_bash/${output_dir}/ids.txt \
+				$project_dir/outputs/06_assembly_spades/${output_dir}/contigs_hq/contigs_hq.fasta > \
+				$project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_hq.fasta
+	
+		fi;
+	done;
+fi
+
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/16_cleanGenome-bash.slurm

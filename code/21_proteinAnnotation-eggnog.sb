@@ -1,0 +1,73 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:30:00 
+#SBATCH --nodes=1-2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=128
+#SBATCH --mem=512G
+#SBATCH --job-name 21eggnog
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 20.2_proteinAnnotation-eggnog.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/21_proteinAnnotation_eggnog/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo -e "mkdir $project_dir/outputs/21_proteinAnnotation_eggnog"; mkdir $project_dir/outputs/21_proteinAnnotation_eggnog/
+	echo "cd $project_dir/outputs/16_cleanGenome_bash/"; cd $project_dir/outputs/16_cleanGenome_bash/
+
+	if [[ "$EGGNOG" == "yes" ]]; then
+		echo -e "\n========== Testing completeness through gene prediction ==========\n"
+		for file in $(find . -type f -name 'contigs_hq.fasta' | sed 's/\.\///');
+		do 
+			output_dir=$(ls $file | awk -F "/" '{print $1}')
+
+			echo -e "\n========== eggNOG-mapper for file: $file ==========\n"
+			mkdir $project_dir/outputs/21_proteinAnnotation_eggnog/${output_dir}
+			cd $project_dir/outputs/21_proteinAnnotation_eggnog/${output_dir}/
+
+			conda activate eggnog
+			echo -e "version of eggNOG-mapper: `emapper.py --version`" 
+		
+			emapper.py -i $project_dir/outputs/20_geneannotation_prokka/${output_dir}/PROKKA*.faa \
+				--output_dir $project_dir/outputs/21_proteinAnnotation_eggnog/${output_dir}/ \
+				--cpu $cores \
+				--itype proteins \
+				-m diamond \
+				--dbmem \
+				--output $project_dir/outputs/21_proteinAnnotation_eggnog/${output_dir}/assembly \
+				--output_dir $project_dir/outputs/21_proteinAnnotation_eggnog/${output_dir}/ 
+
+			cd $project_dir/outputs/16_cleanGenome_bash/
+			conda deactivate
+		done;
+        else
+            	echo -e "\n You chose not to run EggNog mapper. \n"
+	fi;
+fi
+
+#emapper.py \
+#-m no_search \
+#--annotate_hits_file test.emapper.seed_orthologs \
+#-o test_annot_2 \
+#--dbmem \
+#--report_orthologs \
+#--target_orthologs one2one \
+#--target_taxa 2,2157
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/21_proteinAnnotation-eggnog.slurm

@@ -1,0 +1,53 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:59:00
+#SBATCH --nodes=1-2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=128
+#SBATCH --mem=384G
+#SBATCH --job-name 2nanostat
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 02_rawquality-nanostats.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/02_rawquality_nanostat/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/02_rawquality_nanostat/"; mkdir $project_dir/outputs/02_rawquality_nanostat/
+	echo "cd $project_dir/rawdata/deinterlaced/"; cd $project_dir/rawdata/deinterlaced/
+
+	echo -e "\n========== Generating statistics with NanoStats ==========\n"
+	for file in *.fastq
+	do
+		echo -e "\n========== stats for file: $file ==========\n"
+		conda activate nanostat
+		echo -e "NanoStat version: `NanoStat --version`"
+		mkdir $project_dir/outputs/02_rawquality_nanostat/${file%.*}
+		NanoStat \
+			--threads $cores \
+			--fastq $file \
+			--name $project_dir/outputs/02_rawquality_nanostat/${file%.*}/nanostat.txt
+		conda deactivate
+	done; 
+fi
+
+# for file in `find . -name "*R1.fastq" | cut -d"/" -f2 && find . -name "*R2.fastq" | cut -d"/" -f2`
+# --tsv tab delimited output
+# --name $project_dir/outputs/02_rawquality_nanostat/${file%.*}/${file//.fastq/_nanostat.txt}
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/02_rawquality-nanostat.slurm

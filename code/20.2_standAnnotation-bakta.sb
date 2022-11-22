@@ -1,0 +1,85 @@
+#!/bin/bash -login
+
+#SBATCH --time=02:59:00
+#SBATCH --nodes=1-2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=128
+#SBATCH --mem=512G
+#SBATCH --job-name 16bakta
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 20.2_standAnnotation-bakta.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/20.2_standAnnotation_bakta/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	if [[ "$BAKTA" == "yes" ]]; then
+		echo "mkdir $project_dir/outputs/20.2_standAnnotation_bakta"; mkdir $project_dir/outputs/20.2_standAnnotation_bakta/
+		echo "cd $project_dir/outputs/16_cleanGenome_bash/"; cd $project_dir/outputs/16_cleanGenome_bash/
+
+		echo -e "\n========== Additional annotation with the Bakta piepeline ==========\n"
+		for file in $(find . -type f -name 'contigs_hq.fasta' | sed 's/\.\///');
+		do 
+			output_dir=$(ls $file | awk -F "/" '{print $1}')
+
+			if [ -d $project_dir/outputs/17_fixstart_circlator/${output_dir}/ ]; then
+
+				source_file=$project_dir/outputs/17_fixstart_circlator/${output_dir}/contigs_hq_fixstart.fasta
+				echo -e "\n I am going to use the circularized assembly. \n"
+			else 
+				source_file=$project_dir/outputs/16_cleanGenome_bash/${output_dir}/contigs_hq.fasta
+				echo -e "\n No curcular chromosome. I am going to use the high quality contigs. \n"
+			fi;
+
+
+			echo -e "\n========== Extracting taxonomies from gtdb-tk for: $file ==========\n"
+			
+			genus=$(awk 'FNR == 2 {print}' \
+				$project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/gtdbtk_classification/classify/gtdbtk.bac120.summary.tsv \
+				| cut -f 2 | cut -f 6 -d ";" | cut -f 3 -d "_")
+			
+			species=$(awk 'FNR == 2 {print}' \
+				$project_dir/outputs/11_completeness_checkm-gtdbtk/${output_dir}/gtdbtk_classification/classify/gtdbtk.bac120.summary.tsv \
+				| cut -f 2 | cut -f 7 -d ";" | cut -f 2 -d " ")
+
+				echo $genus; echo $species
+
+				echo -e "\n========== Annotation with bakta pipe for file: $file ==========\n"
+				mkdir $project_dir/outputs/20.2_standAnnotation_bakta/${output_dir}
+				conda activate bakta
+				echo -e "version of Bakta: `bakta --version`"
+
+				bakta \
+					--verbose \
+					--complete \
+					--compliant \
+					--threads $cores \
+					--genus $genus \
+					--species $species \
+					--prefix bakta \
+					--db $bakta_db \
+					--output $project_dir/outputs/20.2_standAnnotation_bakta/${output_dir}/ $source_file
+				conda deactivate
+			done;
+		else 
+			echo -e "\n You decided NOT to run the Bakta annotation pipeline. Skipping! \n"
+	fi;
+fi
+
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/20.2_standAnnotation-bakta.slurm

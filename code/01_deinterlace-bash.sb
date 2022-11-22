@@ -1,0 +1,43 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:59:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64G
+#SBATCH --job-name 1deinterlace
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 01_deinterlace-bash.sb \n"
+
+echo -e "\n========== Sub-directoires ==========\n"
+if [ -d $project_dir/rawdata/deinterlaced/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/rawdata/deinterlaced/"; mkdir $project_dir/rawdata/deinterlaced/
+
+	echo -e "\n========== De-interlace fastq files ==========\n" 
+	for file in *.fastq 
+	do
+		paste - - - - - - - - < $file \
+		    | tee >(cut -f 1-4 | tr "\t" "\n" > $project_dir/rawdata/deinterlaced/${file//.fastq/_R1.fastq}) \
+		    |       cut -f 5-8 | tr "\t" "\n" > $project_dir/rawdata/deinterlaced/${file//.fastq/_R2.fastq}
+	done;
+fi
+
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/01_deinterlace-bash.slurm

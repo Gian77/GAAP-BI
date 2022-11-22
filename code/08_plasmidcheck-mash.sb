@@ -1,0 +1,99 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:15:00 
+#SBATCH --nodes=1-2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=64
+#SBATCH --mem=128G
+#SBATCH --job-name 8mash
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 08_plasmidCheck-mash.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/08_plasmidcheck_mash/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/08_plasmidcheck_mash"; mkdir $project_dir/outputs/08_plasmidcheck_mash/
+	echo "cd $project_dir/outputs/06_assembly_spades/"; cd $project_dir/outputs/06_assembly_spades/
+
+	if [[ "$MASH" == "yes" ]]; then
+		
+		echo -e "\n========== Check for plasmid-born contigs with Mash ==========\n"
+		for file in $(find . -type f -name 'contigs_hq.fasta' | sed 's/\.\///')
+		do
+			echo -e "\n========== Separate contigs ==========\n"
+			output_dir=$(ls $file | awk -F "/" '{print $1}')
+			mkdir $project_dir/outputs/08_plasmidcheck_mash/${output_dir}
+
+			cp $project_dir/outputs/06_assembly_spades/${output_dir}/contigs_hq/contigs_hq.fasta $project_dir/outputs/08_plasmidcheck_mash/${output_dir}/
+			
+			cd $project_dir/outputs/08_plasmidcheck_mash/${output_dir}/
+			#awk code to split each contig in 1 separate file so that plasmid matching contigs can be extracted. 
+			awk -F '>' '/^>/ {F=sprintf("%s.fasta",$2); print > F;next;} {print >> F;}' < $(find . -type f -name 'contigs_hq.fasta')
+			
+			# some data hygene
+			rm $project_dir/outputs/08_plasmidcheck_mash/${output_dir}/contigs_hq.fasta
+		
+			echo -e "\n========== Check for plasmids with mash ==========\n"	
+			for contig in *.fasta
+			do	
+				echo -e "\n========== mash for file: $file ==========\n" 
+				conda activate mash	
+				mash sketch \
+					-S 42 \
+					-k 21 \
+					-s 1000 \
+					-o ${contig//.fasta/} $contig
+	    
+				mash info *.msh
+
+				mash dist \
+					-p $cores \
+					-v 0.05 \
+					-d 0.1 \
+					$mash_plsdb ${contig//.fasta/.msh} > ${contig//.fasta/.tsv}
+				conda deactivate
+			done
+		
+			cat *.tsv | cut -f 1,2,3,4 > mash_plsdb.txt
+			cut -f 1 mash_plsdb.txt > grep_plasmid.list
+			while read line
+				do grep "$line" $mash_plsdb_meta >> mash_plsdb_meta.txt
+			done < grep_plasmid.list
+
+			paste mash_plsdb.txt mash_plsdb_meta.txt | sort -k 3 > plasmid_candidate_meta.tsv
+
+			sed -i '1i #plasmid-ID\tcontig-ID\tdistance\tp-value\tUID_NUCCORE\tACC_NUCCORE\tDescription_NUCCORE\tCreateDate_NUCCORE\tTopology_NUCCORE\tCompleteness_NUCCORE\tTaxonID_NUCCORE\tGenome_NUCCORE\tLength_NUCCORE\tSource_NUCCORE\tUID_ASSEMBLY\tStatus_ASSEMBLY\tSeqReleaseDate_ASSEMBLY\tSubmissionDate_ASSEMBLY\tLatest_ASSEMBLY\tUID_BIOSAMPLE\tACC_BIOSAMPLE\tLocation_BIOSAMPLE\tCoordinates_BIOSAMPLE\tIsolationSource_BIOSAMPLE\ttaxon_name\ttaxon_rank\tlineage\ttaxon_species_id\ttaxon_species_name\ttaxon_genus_id\ttaxon_genus_name\ttaxon_family_id\ttaxon_family_name\ttaxon_order_id\ttaxon_order_name\ttaxon_class_id\ttaxon_class_name\ttaxon_phylum_id\ttaxon_phylum_name\ttaxon_superkingdom_id\ttaxon_superkingdom_name\tloc_lat\tloc_lng\tloc_parsed\tGC_NUCCORE\tIdentical\tOldVersion\thits_rMLST\thitscount_rMLST\tD1\tD2\tplasmidfinder\tpmlst' plasmid_candidate_meta.tsv
+
+			cat plasmid_candidate_meta.tsv | sed '1d' | cut -f 2 | sort -u > plasmid_candidate_contig.list
+			cat $(grep -v '^#' plasmid_candidate_contig.list) > plasmid_candidate_contig.fasta
+	 
+			rm $project_dir/outputs/08_plasmidcheck_mash/${output_dir}/NODE*.fasta
+			rm $project_dir/outputs/08_plasmidcheck_mash/${output_dir}/NODE*.msh
+			cd $project_dir/outputs/06_assembly_spades/
+		done;	
+	else
+		echo -e "\n You chose not to run mash, for identifying plasmid-born contigs. \n"
+	fi;
+
+fi
+
+# https://readthedocs.org/projects/mash/downloads/pdf/latest/
+# https://ccb-microbe.cs.uni-saarland.de/plsdb/plasmids/search_form/seq/
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/08_plasmidcheck-mash.slurm

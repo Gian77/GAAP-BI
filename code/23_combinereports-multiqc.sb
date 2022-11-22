@@ -1,0 +1,73 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:10:00 
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64G
+#SBATCH --job-name 23multiQC
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 23_combineReports-multiqc.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/23_combinereports_multiqc/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/23_combinereports_multiqc"; mkdir $project_dir/outputs/23_combinereports_multiqc/
+	echo "cd $project_dir/outputs/23_combinereports_multiqc/"; cd $project_dir/outputs/23_combinereports_multiqc/
+
+	echo -e "\n========== Generate MultiQC config file =============\n"
+	conda activate multiqc
+	echo -e "version of MultiQC: `multiqc --version`"
+	
+	echo "show_analysis_paths: False 
+	show_analysis_time: False 
+	report_header_info:
+	- Contact E-mail: "benucci@msu.edu"
+	- Project Title: "Characterizing microbial functions in swithgrass phyllosphere"
+	- Project Code: "Genome assembly, annotation and quality evaluation pipeline"
+	- Sequencing Platform: "PacBio"
+
+	module_order:
+	- fastqc
+	- nanostat
+	- quast
+	- qualimap
+	- kraken
+	- busco
+	- prokka" > $project_dir/outputs/23_combinereports_multiqc/multiqc_config.yaml
+
+	# removing \t at the beginning of each line for config to work.
+	sed "s/^[ \t]*//" -i $project_dir/outputs/23_combinereports_multiqc/multiqc_config.yaml
+
+	echo -e "\n========== Combine reports for file: $file ==========\n"
+	multiqc \
+		-v \
+		-d \
+		$project_dir/outputs/03_rawquality_fast-QC/ \
+		$project_dir/outputs/02_rawquality_nanostat/ \
+		$project_dir/outputs/09_assemblyeval_bowtie2-qualimap/ \
+		$project_dir/outputs/12_taxcalssabund_kraken2-bracken/ \
+		$project_dir/outputs/18_assemblyquality_checkm-quast \
+		$project_dir/outputs/19_geneprediction_busco/ \
+		$project_dir/outputs/20_geneannotation_prokka/
+	
+	conda deactivate
+fi
+
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/23_combinereports-multiqc.slurm

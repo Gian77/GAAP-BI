@@ -1,0 +1,86 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:59:00 
+#SBATCH --nodes=1-2   
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=128
+#SBATCH --mem=256G  
+#SBATCH --job-name 4bowtie2
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 04_removing Phix-bowtie2.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/04_removePhix_bowtie2/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/04_removePhix_bowtie2/"; mkdir $project_dir/outputs/04_removePhix_bowtie2/
+	echo "cd $project_dir/rawdata/deinterlaced/"; cd $project_dir/rawdata/deinterlaced/
+
+	echo -e "\n========== Counting raw reads ==========\n"
+	for file in *.fastq
+	do
+		echo "$file : `echo $(cat ${file} | wc -l)/4|bc`"
+	done > raw.counts
+	
+	echo -e "\n========== filtering PhiX from reads ==========\n"
+	#ls *R1.fastq > bowtie2.temp
+	#ls *R2.fastq >> bowtie2.temp
+	#$sort bowtie2.temp > bowtie2.list
+	#rm bowtie2.temp
+	
+	ls *.fastq > bowtie2.list
+	
+	while read R1
+	do read R2
+		echo -e "\n========== stats for file: $R1 ==========\n"
+		conda activate bowtie2
+		echo "Bowtie2 version: `bowtie2 --version`"
+		name=$(ls $R1 | awk -F "_" '{print $1}')
+		
+		bowtie2 \
+			-x $phix_db \
+			-1 $R1 \
+			-2 $R2 \
+			-p $cores \
+			--un-conc $project_dir/outputs/04_removePhix_bowtie2/${name}.fastq \
+			-S $project_dir/outputs/04_removePhix_bowtie2/${name}_contaminated_align.sam \
+			--local
+			conda deactivate
+	
+		mv $project_dir/outputs/04_removePhix_bowtie2/*.1.fastq $project_dir/outputs/04_removePhix_bowtie2/${name}_pe_R1.fastq
+		mv $project_dir/outputs/04_removePhix_bowtie2/*.2.fastq $project_dir/outputs/04_removePhix_bowtie2/${name}_pe_R2.fastq
+	
+	done < bowtie2.list
+	
+	rm $project_dir/outputs/04_removePhix_bowtie2/*contaminated_align.sam
+
+	# --local "trim" or "clip" some read characters from one or both ends of the alignment.
+	# --un-conc Write paired-end reads that fail to align concordantly to file(s) at <path>. 
+	# --al-conc Write paired-end reads that align concordantly at least once to file(s) at <path>. 
+	echo -e "\n========== Counting filtered reads ==========\n"
+	cd $project_dir/outputs/04_removePhix_bowtie2/
+
+	for file in *_pe_*.fastq
+	do
+		echo "$file : `echo $(cat ${file} | wc -l)/4|bc`"
+	done > nophix.counts
+
+fi
+
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/04_removingPhix-bowtie2.slurm

@@ -1,0 +1,120 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:05:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=64G
+#SBATCH --job-name 15filtcontg
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 15_filterContaminants-bash.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/15_filterContaminants_bash/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/15_filterContaminants_bash"; mkdir $project_dir/outputs/15_filterContaminants_bash/
+	echo "cd $project_dir/outputs/10_assemblyvisual_blast_blobt"; cd $project_dir/outputs/10_assemblyvisual_blast_blobt/
+
+	for file in $(find . -type f -name '*bestscore.txt*' | sed 's/\.\///');
+	do 
+		output_dir=$(ls $file | awk -F "/" '{print $1}')
+		echo -e "\n========== extracting BLAST output for file: $output_dir ==========\n"
+		mkdir $project_dir/outputs/15_filterContaminants_bash/${output_dir}/
+
+		echo -e "\n========== extracting Contig taxonomy form Kraken2 for file: $output_dir ==========\n"
+		# reorder columns and sort kraken2 output
+		paste <(cut -f 3 $project_dir/outputs/12_taxcalssabund_kraken2-bracken/${output_dir}/kraken2_output.txt) \
+			<(cut -f 2 $project_dir/outputs/12_taxcalssabund_kraken2-bracken/${output_dir}/kraken2_output.txt) | sort -k1 -n > \
+				    $project_dir/outputs/15_filterContaminants_bash/${output_dir}/kraken2.output
+	
+		# sort tax ID kraken2 report -n number
+		# The awk '{$1=$1;print}' is for trimming leading anmd trailing white spaces at each line
+		paste <(cat $project_dir/outputs/12_taxcalssabund_kraken2-bracken/${output_dir}/kraken2_report.txt \
+			| cut -f 5) <(cat $project_dir/outputs/12_taxcalssabund_kraken2-bracken/${output_dir}/kraken2_report.txt \
+			| cut -f 6 | awk '{$1=$1;print}') | sort -k 1 -n > \
+				$project_dir/outputs/15_filterContaminants_bash/${output_dir}/kraken2.taxonomy
+	
+		# join and sort -r reverse -t; $'\t' filed separator as varibale
+		# use tr = translate or delete characters, e.g. tr " " "*" to find whitespaces and then remove _ e.g. sed "s/ //g" 
+		join -t $'\t' <(sort -f $project_dir/outputs/15_filterContaminants_bash/${output_dir}/kraken2.output) \
+			<(sort -f $project_dir/outputs/15_filterContaminants_bash/${output_dir}/kraken2.taxonomy) -i -o 1.1,1.2,2.1,2.2 \
+			| tr "_" "\t" | cut -f 3,9 | sort -k1 -n > \
+				$project_dir/outputs/15_filterContaminants_bash/${output_dir}/kraken2.results
+	
+		echo -e "\n========== extracting Contig taxonomy form BLAST/Blobtools for file: $output_dir ==========\n"
+		# extracting blobtools results
+		cat $project_dir/outputs/10_assemblyvisual_blast_blobt/${output_dir}/BLASTblobtool_bestscore.txt.blobDB.table.txt \
+			| sed '1,11d' | cut -f 1,9 | cut -f 1,2 -d "|" | sed 's/|/\ /' | sed 's/'tax0='/ /g' \
+			| sed 's/:/\t/g' | cut -f 1,2 | sed 's/_/\t/g' | cut -f 2,7 > \
+				$project_dir/outputs/15_filterContaminants_bash/${output_dir}/blobtool.results
+		
+		echo -e "\n========== extracting Contig taxonomy form GUNC for file: $output_dir ==========\n"
+				for NODE in `cat $project_dir/outputs/13_chimeraDetect_gunc-checkm/${output_dir}/gunc_output/*.contig_assignments.tsv \
+				| awk '{print $1}' | sort | uniq`
+			do
+			sed -n '/'$NODE'/p' $project_dir/outputs/13_chimeraDetect_gunc-checkm/${output_dir}/gunc_output/*.contig_assignments.tsv \
+				| awk '($2=="genus")' | sed -n '1p'
+		done > $project_dir/outputs/15_filterContaminants_bash/${output_dir}/gunc.output
+	
+		cat $project_dir/outputs/15_filterContaminants_bash/${output_dir}/gunc.output \
+			| sed 's/_/\t/g' | sort -k2 -n | cut -f 2,8,9 | sed 's/ /\t/g' | cut -f 1,3,4 > \
+				$project_dir/outputs/15_filterContaminants_bash/${output_dir}/gunc.results
+
+		echo -e "\n========== combine taxon assignment for file: $output_dir ==========\n"
+		# combine results together, sort with -f 
+		join <(sort -f $project_dir/outputs/15_filterContaminants_bash/${output_dir}/blobtool.results) \
+			<(sort -f $project_dir/outputs/15_filterContaminants_bash/${output_dir}/kraken2.results) -i -o 1.1,1.2,2.1,2.2 \
+			| sed 's/ /\t/g' | sort -f | join -e- -a1 -a2 -o 1.1,1.2,1.3,1.4,2.1,2.2,2.3 - \
+			<(sort $project_dir/outputs/15_filterContaminants_bash/${output_dir}/gunc.results -f) \
+			| sed 's/ /\t/g' | sort -n > $project_dir/outputs/15_filterContaminants_bash/${output_dir}/contaminants_table.temp
+	
+		cat $project_dir/outputs/15_filterContaminants_bash/${output_dir}/contaminants_table.temp \
+			| cut -f 1,3,5 > $project_dir/outputs/15_filterContaminants_bash/${output_dir}/contigs.classified
+	
+		# The -E to access the extended regular expression syntax, the -o to only output the matching segment of the line 
+		# (squiggly brackets (e.g. {1,4}) indicate the number of instance, e.g. max 9999). The sort -h option, that compares 
+		# human readable numbers. paste -s prints each line from standard input as fields of a single line separated by tabs. 
+
+		while read -r line
+			do echo "$line" | grep -Eo '[0-9]{1,4}' | sort -h | uniq | paste -s 
+		done < $project_dir/outputs/15_filterContaminants_bash/${output_dir}/contigs.classified > \
+				$project_dir/outputs/15_filterContaminants_bash/${output_dir}/contigs.number
+	
+		echo -e "\n========== add contig names: $output_dir ==========\n"
+		grep "^>NODE" $project_dir/outputs/06_assembly_spades/${output_dir}/contigs_hq/contigs_hq.fasta \
+		| sed -e 's/>//g' -e 's/_length_/\t/g' -e 's/_cov_/\t/g' > \
+			$project_dir/outputs/15_filterContaminants_bash/${output_dir}/contigs.name
+	
+		echo -e "\n========== combine tables for file: $output_dir ==========\n"
+		#paste $project_dir/outputs/15_filterContaminants_bash/${output_dir}/contigs.number \
+		#$project_dir/outputs/15_filterContaminants_bash/${output_dir}/contaminants_table.temp | sort -n > \
+		#$project_dir/outputs/15_filterContaminants_bash/${output_dir}/contaminants_table.ordered
+
+		# awk 'BEGIN{OFS="\t"}$1="NODE_"$1' for keeping the \t as separator and adding NODE in front
+		paste <(cut -f 1 $project_dir/outputs/15_filterContaminants_bash/${output_dir}/contigs.name) \
+			$project_dir/outputs/15_filterContaminants_bash/${output_dir}/contaminants_table.temp \
+			| paste - <(cut -f 2,3 $project_dir/outputs/15_filterContaminants_bash/${output_dir}/contigs.name) \
+			| sort -k 2 -n \
+			| sed '1i #contigs\tnode_blast_blobtools\tblast_blobtools\tnode_kraken2\tkraken2\tnode_gunc\tgunc\tgunc_assigned_genes\tlength\tcoverage' > \
+				$project_dir/outputs/15_filterContaminants_bash/${output_dir}/contaminants_table.results
+	done;
+fi
+
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/15_filterContaminants-bash.slurm

@@ -1,0 +1,63 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:59:00 
+#SBATCH --nodes=1-2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=128
+#SBATCH --mem=384G  
+#SBATCH --job-name 7platon
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 07_plasmidCheck-platon.sb \n"
+
+echo -e "\n========== Sub-directories ==========\n"
+if [ -d $project_dir/outputs/07_plasmidcheck_platon/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/07_plasmidcheck_platon"; mkdir $project_dir/outputs/07_plasmidcheck_platon/
+	echo "cd $project_dir/outputs/06_assembly_spades/"; cd $project_dir/outputs/06_assembly_spades/
+
+	echo -e "\n========== Check for plasmid-born contigs with Platon ==========\n"
+	for file in $(find . -type f -name 'contigs_hq.fasta' | sed 's/\.\///')
+	do 
+		output_dir=$(ls $file | awk -F "/" '{print $1}')
+	
+		echo -e "\n========== Plasmid check for file: $output_dir ==========\n"
+		conda activate platon
+		echo -e "version of Platon `platon --version`" 
+		platon \
+			$project_dir/outputs/06_assembly_spades/${output_dir}/contigs_hq/contigs_hq.fasta \
+			--threads $cores \
+			--verbose \
+			--db $platon_db \
+			--output $project_dir/outputs/07_plasmidcheck_platon/${output_dir}/
+	
+		echo -e "\n========== Charactetize contigs for file: $file ==========\n" 
+		platon \
+			$project_dir/outputs/06_assembly_spades/${output_dir}/contigs_hq/contigs_hq.fasta \
+			--threads $cores \
+			--verbose \
+			--characterize \
+			--db $platon_db \
+			--output $project_dir/outputs/07_plasmidcheck_platon/${output_dir}/characterize/
+		conda deactivate
+	done;
+fi
+# --characterize --meta in characterization mode, Platon executes the full characterization 
+# pipeline which is why all contigs are handled as plasmid-borne
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/07_plasmidcheck-platon.slurm

@@ -1,0 +1,82 @@
+#!/bin/bash -login
+
+#SBATCH --time=00:59:00
+#SBATCH --nodes=1-2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=128
+#SBATCH --mem=256G
+#SBATCH --job-name 5fastp
+#SBATCH -A shade-cole-bonito
+
+cd ${SLURM_SUBMIT_DIR}
+cores=$SLURM_CPUS_PER_TASK
+RAM=$SLURM_MEM_PER_NODE
+
+echo -e "\n========== Project paths ==========\n"
+source ../config.yaml
+
+echo -e "GAAP-BI v. 1.0 - Genome Assembly and Annotation Pipeline for Bacteria Illumina
+MIT LICENSE - Copyright © 2022 Gian M.N. Benucci, Ph.D.
+email: benucci[at]msu[dot]edu\n"
+
+echo -e "\n Running script: 05_trimmingAdapters-fastp.sb \n"
+
+echo -e "\n========== Directories ==========\n"
+if [ -d $project_dir/outputs/05_trimmingadapters_fastp/ ]; then
+	echo -e "\n Directory exist! I performed this step already. Exiting... \n"
+else
+	echo "mkdir $project_dir/outputs/05_trimmingadapters_fastp"; mkdir $project_dir/outputs/05_trimmingadapters_fastp/
+	echo "cd $project_dir/outputs/04_removePhix_bowtie2/"; cd $project_dir/outputs/04_removePhix_bowtie2/
+
+	echo -e "\n========== Trimming adapters using fastp ==========\n"
+	conda activate fastp
+	echo -e "fastp version: `fastp --version`" 
+
+	ls *_pe_R* > pairs.list
+
+	while read R1
+		do read R2
+		echo -e "\n========== trimming file: $R1 ==========\n" 
+		fastp \
+			--thread $cores \
+			--verbose \
+			--detect_adapter_for_pe \
+			--length_required 50 \
+			--cut_front \
+			--cut_right \
+			-i $R1 \
+			-I $R2 \
+			-o $project_dir/outputs/05_trimmingadapters_fastp/${R1//_pe_R1.fastq/_trimmed_R1.fastq} \
+			-O $project_dir/outputs/05_trimmingadapters_fastp/${R2//_pe_R2.fastq/_trimmed_R2.fastq} \
+			-h $project_dir/outputs/05_trimmingadapters_fastp/${R1//_pe_R1.fastq/}_fastp.html \
+			-j $project_dir/outputs/05_trimmingadapters_fastp/${R1//_pe_R1.fastq/}_fastp.json
+	done < pairs.list
+	conda deactivate
+
+	echo -e "\n========== Assessing quality after trimming ==========\n"
+	conda activate fastqc
+	echo -e "FastQC version: `fastqc --version`" 
+	
+	cd $project_dir/outputs/05_trimmingadapters_fastp
+	ls *_trimmed_R*.fastq > spades.list
+	
+	while read R1
+		do read R2
+		echo -e "\n========== quality for file: $R1 ==========\n" 
+		mkdir $project_dir/outputs/05_trimmingadapters_fastp/${R1//_trimmed_R1.fastq/}_fastqc/
+		fastqc \
+			-t $cores \
+			$R1 \
+			$R2 \
+			-o $project_dir/outputs/05_trimmingadapters_fastp/${R1//_trimmed_R1.fastq/}_fastqc/
+	done < spades.list
+	conda deactivate
+fi
+
+
+# To extract file name with no extension use ${file%.*}
+echo -e "\n========== Sbatch log ==========\n"
+echo -e "\n Current directory: `pwd` \n"
+echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+scontrol show job $SLURM_JOB_ID
+mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/05_trimmingadapters-fastp.slurm
