@@ -24,8 +24,7 @@ You will then need to
 * Download the databases (please see below and the `config.yaml` file), and include the full paths into the config file.
 * Select all the **User options** (please see below).
 
-Then you should be good to go and run GAAP-BI by just 
-`sh GAAP-BI-v1.0.sh`
+Then you should be good to go and run GAAP-BI by just `sh GAAP-BI-v1.0.sh`
 
 ### **Let's explore the settings in the `config.yaml` file**
 

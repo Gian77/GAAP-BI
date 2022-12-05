@@ -64,17 +64,10 @@ else
 	done;
 fi
 
-#Bandage info $project_dir/outputs/17_fixstart_circlator/${output_dir}/03.assemble/assembly_graph.fastg
-#Bandage image \
-#$project_dir/outputs/17_fixstart_circlator/${output_dir}/03.assemble/assembly_graph.fastg \
-#circ_assembly_graph.png \
-#--query $project_dir/outputs/20_geneannotation_prokka/${output_dir}/*.fna \
-#--scope aroundblast \
-#--distance 3
 # Bandage error: --query must be followed by a valid filename
 # Usually becasue Prokka did not run correctly
 echo -e "\n========== Sbatch log ==========\n"
 echo -e "\n Current directory: `pwd` \n"
-echo -e "\n `sacct -u benucci -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
+echo -e "\n `sacct -u $MSUusername -j $SLURM_JOB_ID --format=JobID,JobName,Start,End,Elapsed,NCPUS,ReqMem` \n"
 scontrol show job $SLURM_JOB_ID
 mv $project_dir/code/slurm-$SLURM_JOB_ID* $project_dir/slurms/24_assemblygraph_bandage.slurm
