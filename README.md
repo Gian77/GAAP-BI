@@ -57,7 +57,7 @@ INTERLACED=yes
 COVERAGE=2.0
 LENGTH=500
 MASH=yes
-CHROMOSOMES=3
+CHROMOSOMES=2
 EGGNOG=yes
 BAKTA=no
 ```
@@ -66,7 +66,7 @@ The `INTERLACED` variable is for when read are interlaced  (i.e. `R1` and `R2` a
 The `COVERAGE` and `LENGTH` are selexplanaroty and refer to the assembled contigs.
 The `STRING` variable differentiate `hifi` form `raw` pacbio reads. Usually `ccs` is present in the raw file name, when found it activates the hifi mode in the *Flye* assembler. If you want to differentiate using a different string you can change it accordingly.
 The `MASH` variable is for running plasmid detection using *Mash*.
-The `CHROMOSOMES` variable is for circularize the genome or the chromosomes. If the number of contigs is less than the number of specified chromosomes then *Circlator* is run on the contings to circularize them.
+The `CHROMOSOMES` variable is for circularize the genome (default `2`, one contig is the bacterial genome and he other contig is the plasmid). However, It is known that some bacteria have multiple circular cromosomes (e.g., *Rhodobacter sphaeroides*), for reference see [here](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3348396/). Feel free to increase to how many chromosomes you think the tazon you are working on may have. If the number of contigs is less than the number of specified chromosomes then *Circlator* is run on the contings to circularize them.
 The `EGGNOG` variable is to run *eggnog-mapper* to re-classify the proteins detected by *Prokka*.
 The `BAKTA` variable is for running the *bakta* annotation pipeline.
 

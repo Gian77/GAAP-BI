@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # MIT LICENSE - Copyright © 2022 Gian M.N. Benucci <benucci@msu.edu>
-# This script compare the length of the sequence and the quality to debug
-# errors in sequence assemblies or rename steps.
+# This script extract high quality contigs from genome/metagenomes assembled with spades,
+# based on the length and coverage calculated in spades.
 # Usage: sh filterContigs.sh <full-path-to-contigs.fasta> <full-path-to-output_dir> 
 
 cd $(echo "$( echo $(cd ../../ && pwd) )"/code/)
