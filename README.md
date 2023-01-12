@@ -16,7 +16,7 @@ GAAP-BI v.1, October 2022<br>
 
 To use GAAP-BI just clone the directory 
 ```
-git clone git@github.com:Gian77/GAAP-BI.git
+git clone https://github.com/Gian77/GAAP-BI.git
 ```
 You will then need to 
 * Copy your raw reads file in the rawdata directory together with a md5sum file.
