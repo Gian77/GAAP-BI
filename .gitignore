@@ -1,0 +1,10 @@
+#Files and dir NOT tracked
+
+code/slurm-*.out
+rawdata/*.fastq.gz
+rawdata/*.fastq
+rawdata/*.txt
+rawdata/raw.counts
+outputs/
+slurms/
+
